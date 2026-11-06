@@ -1,0 +1,7 @@
+image:
+  repository: docker.io/aivanspooky/car-rental-payment
+
+port: 8050
+
+secretEnv:
+  ConnectionStrings__Default: "Host=postgres;Port=5432;Database=payments;Username=program;Password=test"

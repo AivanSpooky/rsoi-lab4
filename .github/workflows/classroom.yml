@@ -6,30 +6,146 @@ on:
   pull_request:
     branches:
       - master
+env:
+  VARIANT: v3
+  NAMESPACE: test
+  DEPLOYMENT_NAME: payment
+  DOCKER_REGISTRY: docker.io
+  IMAGE_TAG: ${{ github.sha }}
 jobs:
   build:
     name: Autograding
     runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+      BASE_URL: ${{ vars.BASE_URL }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: docker/setup-buildx-action@v2
+      - uses: docker/setup-buildx-action@v3
 
-      # TODO build and run unit tests
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build and run unit tests
+        run: |
+          dotnet restore CarRentalSystem.slnx
+          dotnet build CarRentalSystem.slnx --no-restore -c Release
+          dotnet test CarRentalSystem.slnx --no-build -c Release
+
+      - name: Resolve image namespace
+        run: |
+          if [[ -n "$DOCKERHUB_USERNAME" ]]; then
+            echo "DOCKER_NAMESPACE=$DOCKERHUB_USERNAME" >> "$GITHUB_ENV"
+          else
+            echo "DOCKER_NAMESPACE=local" >> "$GITHUB_ENV"
+          fi
 
       - name: Build images
         timeout-minutes: 10
-        run: docker compose build --push
+        run: docker compose build cars rental payment gateway
 
-      # TODO deploy to k8s with liveness and readyness probes
+      - name: Login to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Publish images
+        if: env.DOCKERHUB_USERNAME != ''
+        timeout-minutes: 10
+        run: |
+          docker compose push cars rental payment gateway
+          for service in cars rental payment gateway; do
+            image="$DOCKER_REGISTRY/$DOCKER_NAMESPACE/car-rental-$service"
+            docker tag "$image:$IMAGE_TAG" "$image:latest"
+            docker push "$image:latest"
+          done
+
+      - uses: azure/setup-helm@v4
+
+      - uses: azure/setup-kubectl@v4
+
+      - name: Connect to managed k8s cluster
+        if: env.KUBE_CONFIG != ''
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBE_CONFIG" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          kubectl cluster-info
+
+      # Without KUBE_CONFIG secret the same charts are deployed to a kind cluster inside the runner
+      - name: Create kind cluster
+        if: env.KUBE_CONFIG == ''
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: rsoi
+          config: k8s/kind.yml
+
+      - name: Setup kind cluster
+        if: env.KUBE_CONFIG == ''
+        timeout-minutes: 5
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.14.5/deploy/static/provider/kind/deploy.yaml
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=180s
+          for service in cars rental payment gateway; do
+            kind load docker-image --name rsoi "$DOCKER_REGISTRY/$DOCKER_NAMESPACE/car-rental-$service:$IMAGE_TAG"
+          done
+
+      - name: Deploy to k8s
+        timeout-minutes: 10
+        run: bash k8s/deploy.sh
 
       - name: Wait before services are ready
-        run: kubectl wait -n test -l app.kubernetes.io/name=gateway pod --for=condition=Ready --timeout 3m
-      
-      # TODO setup parameters in classroom/autograding.json
-      
+        run: kubectl wait -n "$NAMESPACE" -l app.kubernetes.io/name=gateway pod --for=condition=Ready --timeout 3m
+
+      - name: Configure gateway address
+        run: |
+          url="$BASE_URL"
+          if [[ -z "$url" && -n "$KUBE_CONFIG" ]]; then
+            for _ in $(seq 1 30); do
+              address=$(kubectl get ingress gateway -n "$NAMESPACE" \
+                -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+              [[ -n "$address" ]] && break
+              sleep 5
+            done
+            url="http://$address"
+          fi
+          url=${url:-http://localhost:8080}
+          echo "Gateway address: $url"
+          jq --arg url "$url" '(.values[] | select(.key == "baseUrl") | .value) = $url' \
+            "$VARIANT/postman/environment.json" > environment.tmp
+          mv environment.tmp "$VARIANT/postman/environment.json"
+          for _ in $(seq 1 30); do
+            curl -sf "$url/manage/health" > /dev/null && break
+            sleep 5
+          done
+
+      - name: Install newman
+        run: command -v newman || npm install -g newman
+
+      - name: Run API Tests
+        timeout-minutes: 10
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/test-script.sh "$VARIANT" "$DEPLOYMENT_NAME" "$NAMESPACE"
+
       - name: Autograding
         uses: education/autograding@v1
         continue-on-error: true
+
+      - name: Show cluster state
+        if: failure()
+        run: |
+          kubectl get all -n "$NAMESPACE" || true
+          kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=gateway --tail 200 || true

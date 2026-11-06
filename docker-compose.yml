@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: library/postgres:13
+    container_name: postgres
+    restart: on-failure
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "postgres"
+      POSTGRES_DB: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./postgres/:/docker-entrypoint-initdb.d/
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cars:
+    image: "${DOCKER_REGISTRY:-docker.io}/${DOCKER_NAMESPACE:-aivanspooky}/car-rental-cars:${IMAGE_TAG:-latest}"
+    build: src/CarsService
+    container_name: cars
+    restart: on-failure
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=cars;Username=program;Password=test"
+    ports:
+      - "8070:8070"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  rental:
+    image: "${DOCKER_REGISTRY:-docker.io}/${DOCKER_NAMESPACE:-aivanspooky}/car-rental-rental:${IMAGE_TAG:-latest}"
+    build: src/RentalService
+    container_name: rental
+    restart: on-failure
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=rentals;Username=program;Password=test"
+    ports:
+      - "8060:8060"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  payment:
+    image: "${DOCKER_REGISTRY:-docker.io}/${DOCKER_NAMESPACE:-aivanspooky}/car-rental-payment:${IMAGE_TAG:-latest}"
+    build: src/PaymentService
+    container_name: payment
+    restart: on-failure
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=payments;Username=program;Password=test"
+    ports:
+      - "8050:8050"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  gateway:
+    image: "${DOCKER_REGISTRY:-docker.io}/${DOCKER_NAMESPACE:-aivanspooky}/car-rental-gateway:${IMAGE_TAG:-latest}"
+    build: src/Gateway
+    container_name: gateway
+    restart: on-failure
+    environment:
+      Services__Cars: "http://cars:8070"
+      Services__Rental: "http://rental:8060"
+      Services__Payment: "http://payment:8050"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - cars
+      - rental
+      - payment
+
+volumes:
+  db-data:

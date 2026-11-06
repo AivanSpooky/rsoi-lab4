@@ -1,0 +1,16 @@
+# Local cluster: kind create cluster --name rsoi --config k8s/kind.yml
+# Ingress controller is published on localhost:8080 (the address from postman environment).
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP

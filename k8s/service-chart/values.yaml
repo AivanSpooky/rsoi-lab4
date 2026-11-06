@@ -1,0 +1,59 @@
+# Release name is used as the name of Deployment, Service and Ingress
+# (helm install cars ... -> deployment/cars, service/cars).
+
+replicaCount: 1
+
+image:
+  repository: ""
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+component: application
+partOf: car-rental-system
+
+# Port the application listens on inside the container (ASPNETCORE_URLS)
+# and the port of the ClusterIP Service.
+port: 8080
+
+# Plain environment variables, stored in a ConfigMap.
+env: {}
+
+# Sensitive environment variables (connection strings, client secrets), stored in a Secret.
+secretEnv: {}
+
+probes:
+  path: /manage/health
+  startup:
+    periodSeconds: 2
+    timeoutSeconds: 2
+    failureThreshold: 60
+  liveness:
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 2
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 384Mi
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: false
+  className: nginx
+  # Empty host means "any host" (requests to the external IP of the ingress controller).
+  host: ""
+  path: /
+  pathType: Prefix
+  annotations: {}
+  tls: []

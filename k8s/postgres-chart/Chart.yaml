@@ -1,0 +1,6 @@
+apiVersion: v2
+name: postgres-chart
+description: Single PostgreSQL instance with a separate database for every service
+type: application
+version: 1.0.0
+appVersion: "13"

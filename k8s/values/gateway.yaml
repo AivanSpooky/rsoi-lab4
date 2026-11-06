@@ -1,0 +1,19 @@
+image:
+  repository: docker.io/aivanspooky/car-rental-gateway
+
+# Circuit breaker statistics and the retry queue are kept in memory,
+# so the gateway runs as a single replica.
+replicaCount: 1
+
+port: 8080
+
+env:
+  Services__Cars: http://cars:8070
+  Services__Rental: http://rental:8060
+  Services__Payment: http://payment:8050
+  Services__Timeout: "00:00:05"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: ""

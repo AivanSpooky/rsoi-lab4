@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "service.name" . }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "service.labels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: {{ include "service.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "service.name" . }}
+            {{- if .Values.secretEnv }}
+            - secretRef:
+                name: {{ include "service.name" . }}
+            {{- end }}
+          startupProbe:
+            {{- include "service.httpProbe" (dict "root" . "settings" .Values.probes.startup) | nindent 12 }}
+          livenessProbe:
+            {{- include "service.httpProbe" (dict "root" . "settings" .Values.probes.liveness) | nindent 12 }}
+          readinessProbe:
+            {{- include "service.httpProbe" (dict "root" . "settings" .Values.probes.readiness) | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

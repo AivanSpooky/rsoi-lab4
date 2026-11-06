@@ -1,0 +1,6 @@
+{{ include "service.name" . }} is deployed to namespace {{ .Release.Namespace }}.
+Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+In-cluster address: http://{{ include "service.name" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.port }}
+{{- if .Values.ingress.enabled }}
+Published through Ingress (class {{ .Values.ingress.className }}){{ with .Values.ingress.host }} on host {{ . }}{{ end }}.
+{{- end }}

@@ -1,0 +1,36 @@
+image:
+  repository: postgres
+  tag: "13"
+  pullPolicy: IfNotPresent
+
+port: 5432
+
+# Superuser of the instance
+auth:
+  username: postgres
+  password: postgres
+  database: postgres
+
+# Application user, owner of all service databases
+program:
+  username: program
+  password: test
+
+# One physical instance, a separate logical database per service
+databases:
+  - cars
+  - rentals
+  - payments
+
+persistence:
+  enabled: true
+  size: 1Gi
+  # Empty value means the default StorageClass of the cluster
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi

@@ -1,0 +1,7 @@
+image:
+  repository: docker.io/aivanspooky/car-rental-rental
+
+port: 8060
+
+secretEnv:
+  ConnectionStrings__Default: "Host=postgres;Port=5432;Database=rentals;Username=program;Password=test"
