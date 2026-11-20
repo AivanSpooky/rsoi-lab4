@@ -14,12 +14,16 @@ owner=${DOCKER_NAMESPACE:-aivanspooky}
 tag=${IMAGE_TAG:-latest}
 timeout=${HELM_TIMEOUT:-5m}
 
+namespace_args=(--create-namespace)
+if [[ -n "${KUBE_CONFIG:-}" ]]; then namespace_args=(); fi
+
 root=$(cd "$(dirname "$0")" && pwd)
 
 printf "=== Deploy postgres to namespace %s ===\n" "$namespace"
 helm upgrade --install postgres "$root/postgres-chart" \
   --namespace "$namespace" \
-  --create-namespace \
+  "${namespace_args[@]}" \
+  --set-string persistence.storageClass="${POSTGRES_STORAGE_CLASS:-}" \
   --wait \
   --timeout "$timeout"
 
@@ -30,6 +34,7 @@ for service in cars rental payment gateway; do
     --values "$root/values/$service.yaml" \
     --set image.repository="$registry/$owner/car-rental-$service" \
     --set-string image.tag="$tag" \
+    --set-string ingress.className="${INGRESS_CLASS:-nginx}" \
     --wait \
     --timeout "$timeout"
 done

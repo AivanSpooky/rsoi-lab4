@@ -8,9 +8,11 @@ on:
       - master
 env:
   VARIANT: v3
-  NAMESPACE: test
+  NAMESPACE: ${{ vars.K8S_NAMESPACE || 'test' }}
+  INGRESS_CLASS: ${{ vars.INGRESS_CLASS || 'nginx' }}
   DEPLOYMENT_NAME: payment
   DOCKER_REGISTRY: docker.io
+  POSTGRES_STORAGE_CLASS: ${{ vars.POSTGRES_STORAGE_CLASS }}
   IMAGE_TAG: ${{ github.sha }}
 jobs:
   build:
@@ -79,7 +81,7 @@ jobs:
           mkdir -p "$HOME/.kube"
           printf '%s' "$KUBE_CONFIG" > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
-          kubectl cluster-info
+          kubectl get pods --namespace "$NAMESPACE"
 
       # Without KUBE_CONFIG secret the same charts are deployed to a kind cluster inside the runner
       - name: Create kind cluster
