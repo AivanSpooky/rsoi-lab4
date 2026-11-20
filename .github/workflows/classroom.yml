@@ -145,6 +145,15 @@ jobs:
           chmod +x scripts/*.sh
           ./scripts/test-script.sh "$VARIANT" "$DEPLOYMENT_NAME" "$NAMESPACE"
 
+      - name: Configure autograding namespace
+        run: |
+          # education/autograding@v1 does not forward NAMESPACE to child processes.
+          [[ "$NAMESPACE" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || exit 1
+          command="bash scripts/test-script.sh $VARIANT $DEPLOYMENT_NAME $NAMESPACE"
+          jq --arg command "$command" '.tests[0].run = $command' \
+            .github/classroom/autograding.json > "$RUNNER_TEMP/autograding.json"
+          mv "$RUNNER_TEMP/autograding.json" .github/classroom/autograding.json
+
       - name: Autograding
         uses: education/autograding@v1
         continue-on-error: true
