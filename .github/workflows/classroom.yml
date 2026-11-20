@@ -6,6 +6,9 @@ on:
   pull_request:
     branches:
       - master
+permissions:
+  contents: read
+  checks: write
 env:
   VARIANT: v3
   NAMESPACE: ${{ vars.K8S_NAMESPACE || 'test' }}
